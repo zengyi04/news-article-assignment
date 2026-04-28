@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { collection, query, orderBy, getDocs, deleteDoc, doc, updateDoc } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { articlesApi } from '../lib/api';
 import { Article } from '../types';
 import { Search, RefreshCw, Plus, Loader2, BookOpen, Trash2, Edit3, Calendar, FileText, Globe, ExternalLink, Bookmark, Eye } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -32,10 +31,8 @@ export function Dashboard() {
     else setLoading(true);
     
     try {
-      const q = query(collection(db, 'articles'), orderBy('createdAt', 'desc'));
-      const querySnapshot = await getDocs(q);
-      const docs = querySnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Article));
-      setArticles(docs);
+      const response = await articlesApi.getArticles({ limit: 1000, sortBy: 'createdAt', sortOrder: 'desc' });
+      setArticles((response.articles || []) as Article[]);
     } catch (error) {
       console.error('Error fetching articles:', error);
       toast.error('Failed to load articles. Please try again.');
@@ -59,7 +56,7 @@ export function Dashboard() {
     toast.success('Article purged from archive');
     
     try {
-      await deleteDoc(doc(db, 'articles', deleteId));
+      await articlesApi.deleteArticle(deleteId);
     } catch (error) {
       // Rollback on error
       setArticles(originalArticles);
@@ -78,8 +75,7 @@ export function Dashboard() {
     toast.success(newPinnedState ? 'Article pinned to top' : 'Article unpinned');
     
     try {
-      const docRef = doc(db, 'articles', article.id);
-      await updateDoc(docRef, { isPinned: newPinnedState });
+      await articlesApi.togglePin(article.id);
     } catch (error) {
       // Rollback on error
       setArticles(originalArticles);

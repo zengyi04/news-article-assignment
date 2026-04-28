@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, query, orderBy } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { articlesApi } from '../lib/api';
 import { Article } from '../types';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
@@ -21,12 +20,10 @@ export function Analytics() {
   useEffect(() => {
     const fetchArticles = async () => {
       try {
-        const q = query(collection(db, 'articles'), orderBy('createdAt', 'desc'));
-        const querySnapshot = await getDocs(q);
-        const docs = querySnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Article));
-        setArticles(docs);
+        const response = await articlesApi.getArticles({ limit: 1000, sortBy: 'createdAt', sortOrder: 'desc' });
+        setArticles((response.articles || []) as Article[]);
       } catch (error) {
-        handleFirestoreError(error, OperationType.LIST, 'articles');
+        console.error('Error fetching articles:', error);
       } finally {
         setLoading(false);
       }

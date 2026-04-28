@@ -3,7 +3,7 @@ import { auth } from '../lib/firebase';
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
-  signInWithPopup, 
+  signInWithRedirect,
   GoogleAuthProvider,
   updateProfile,
   signOut
@@ -55,8 +55,7 @@ export function AuthPage() {
       // Add scopes for better user info
       provider.addScope('profile');
       provider.addScope('email');
-      await signInWithPopup(auth, provider);
-      navigate('/dashboard');
+      await signInWithRedirect(auth, provider);
     } catch (err: any) {
       console.error('Google Sign-In Error:', err);
       

@@ -1,6 +1,5 @@
 import { getApp, getApps, initializeApp, type FirebaseApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 declare global {
@@ -16,16 +15,6 @@ const app = globalWindow.__newsArticleFirebaseApp ?? (getApps().length ? getApp(
 globalWindow.__newsArticleFirebaseApp = app;
 
 export const auth = getAuth();
-
-// Get Firestore instance with optimized settings
-export const db = getFirestore(app);
-
-// Check if we're in development and connect to emulator if needed
-if (window.location.hostname === 'localhost' && import.meta.env.DEV) {
-  // Uncomment to use Firestore emulator for faster development
-  // connectFirestoreEmulator(db, 'localhost', 8080);
-  console.log('Firestore initialized for development');
-}
 
 // Configure auth settings for development
 if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {

@@ -1,5 +1,13 @@
 const express = require('express');
-const { db, auth } = require('../firebase-admin');
+const { auth } = require('../firebase-admin');
+const {
+  fetchAllArticles,
+  fetchArticleById,
+  createArticle,
+  updateArticle,
+  deleteArticle,
+  togglePin,
+} = require('../lib/article-store');
 const Joi = require('joi');
 
 const router = express.Router();
@@ -64,44 +72,35 @@ router.get('/', verifyToken, async (req, res) => {
       pinned = ''
     } = req.query;
 
-    let query = db.collection('articles');
+    const sortField = sortBy === 'date' ? 'date' : sortBy;
+    let articles = await fetchAllArticles();
 
-    // Build query
     if (search) {
-      query = query.where('title', '>=', search).where('title', '<=', search + '\uf8ff');
+      const lowered = search.toLowerCase();
+      articles = articles.filter(article => 
+        article.title.toLowerCase().includes(lowered) ||
+        article.summary.toLowerCase().includes(lowered) ||
+        article.publisher.toLowerCase().includes(lowered)
+      );
     }
 
     if (publisher && publisher !== 'All') {
-      query = query.where('publisher', '==', publisher);
+      articles = articles.filter(article => article.publisher === publisher);
     }
 
     if (type && type !== 'All') {
-      query = query.where('type', '==', type);
+      articles = articles.filter(article => article.type === type);
     }
 
     if (pinned === 'true') {
-      query = query.where('isPinned', '==', true);
+      articles = articles.filter(article => article.isPinned);
     }
 
-    // Add sorting
-    const sortField = sortBy === 'date' ? 'date' : sortBy;
-    query = query.orderBy(sortField, sortOrder === 'desc' ? 'desc' : 'asc');
-
-    // Execute query
-    const snapshot = await query.get();
-    let articles = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
-
-    // Client-side filtering for search if needed
-    if (search && articles.length > 0) {
-      articles = articles.filter(article => 
-        article.title.toLowerCase().includes(search.toLowerCase()) ||
-        article.summary.toLowerCase().includes(search.toLowerCase()) ||
-        article.publisher.toLowerCase().includes(search.toLowerCase())
-      );
-    }
+    articles.sort((a, b) => {
+      const aValue = new Date(a[sortField] || a.createdAt).getTime();
+      const bValue = new Date(b[sortField] || b.createdAt).getTime();
+      return sortOrder === 'desc' ? bValue - aValue : aValue - bValue;
+    });
 
     // Pagination
     const startIndex = (parseInt(page) - 1) * parseInt(limit);
@@ -109,8 +108,7 @@ router.get('/', verifyToken, async (req, res) => {
     const paginatedArticles = articles.slice(startIndex, endIndex);
 
     // Get unique publishers for filter options
-    const publishersSnapshot = await db.collection('articles').get();
-    const uniquePublishers = [...new Set(publishersSnapshot.docs.map(doc => doc.data().publisher))];
+    const uniquePublishers = [...new Set(articles.map(doc => doc.publisher))];
 
     res.json({
       articles: paginatedArticles,
@@ -134,16 +132,13 @@ router.get('/', verifyToken, async (req, res) => {
 // GET /api/articles/:id - Get single article
 router.get('/:id', verifyToken, async (req, res) => {
   try {
-    const doc = await db.collection('articles').doc(req.params.id).get();
-    
-    if (!doc.exists) {
+    const article = await fetchArticleById(req.params.id);
+
+    if (!article) {
       return res.status(404).json({ error: 'Article not found' });
     }
 
-    res.json({
-      id: doc.id,
-      ...doc.data()
-    });
+    res.json(article);
   } catch (error) {
     console.error('Error fetching article:', error);
     res.status(500).json({ error: 'Failed to fetch article' });
@@ -153,8 +148,7 @@ router.get('/:id', verifyToken, async (req, res) => {
 // GET /api/articles/stats - Get articles statistics
 router.get('/stats', verifyToken, async (req, res) => {
   try {
-    const snapshot = await db.collection('articles').get();
-    const articles = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const articles = await fetchAllArticles();
 
     const stats = {
       total: articles.length,
@@ -206,11 +200,10 @@ router.post('/', verifyToken, async (req, res) => {
       createdBy: req.user.uid
     };
 
-    const docRef = await db.collection('articles').add(articleData);
-    
+    const savedArticle = await createArticle(articleData);
+
     res.status(201).json({
-      id: docRef.id,
-      ...articleData
+      ...savedArticle
     });
   } catch (error) {
     console.error('Error creating article:', error);
@@ -230,26 +223,17 @@ router.put('/:id', verifyToken, async (req, res) => {
       });
     }
 
-    const docRef = db.collection('articles').doc(req.params.id);
-    const doc = await docRef.get();
-
-    if (!doc.exists) {
-      return res.status(404).json({ error: 'Article not found' });
-    }
-
-    const updateData = {
+    const updatedArticle = await updateArticle(req.params.id, {
       ...value,
       updatedAt: new Date().toISOString(),
       updatedBy: req.user.uid
-    };
-
-    await docRef.update(updateData);
-    
-    const updatedDoc = await docRef.get();
-    res.json({
-      id: updatedDoc.id,
-      ...updatedDoc.data()
     });
+
+    if (!updatedArticle) {
+      return res.status(404).json({ error: 'Article not found' });
+    }
+
+    res.json(updatedArticle);
   } catch (error) {
     console.error('Error updating article:', error);
     res.status(500).json({ error: 'Failed to update article' });
@@ -259,14 +243,11 @@ router.put('/:id', verifyToken, async (req, res) => {
 // DELETE /api/articles/:id - Delete article
 router.delete('/:id', verifyToken, async (req, res) => {
   try {
-    const docRef = db.collection('articles').doc(req.params.id);
-    const doc = await docRef.get();
+    const deleted = await deleteArticle(req.params.id);
 
-    if (!doc.exists) {
+    if (!deleted) {
       return res.status(404).json({ error: 'Article not found' });
     }
-
-    await docRef.delete();
     
     res.json({ 
       message: 'Article deleted successfully',
@@ -281,25 +262,15 @@ router.delete('/:id', verifyToken, async (req, res) => {
 // POST /api/articles/:id/pin - Toggle pin status
 router.post('/:id/pin', verifyToken, async (req, res) => {
   try {
-    const docRef = db.collection('articles').doc(req.params.id);
-    const doc = await docRef.get();
+    const updatedArticle = await togglePin(req.params.id, req.user.uid);
 
-    if (!doc.exists) {
+    if (!updatedArticle) {
       return res.status(404).json({ error: 'Article not found' });
     }
-
-    const currentPinStatus = doc.data().isPinned || false;
-    await docRef.update({
-      isPinned: !currentPinStatus,
-      updatedAt: new Date().toISOString(),
-      updatedBy: req.user.uid
-    });
-
-    const updatedDoc = await docRef.get();
     res.json({
-      id: updatedDoc.id,
-      isPinned: updatedDoc.data().isPinned,
-      message: `Article ${!currentPinStatus ? 'pinned' : 'unpinned'} successfully`
+      id: updatedArticle.id,
+      isPinned: updatedArticle.isPinned,
+      message: `Article ${updatedArticle.isPinned ? 'pinned' : 'unpinned'} successfully`
     });
   } catch (error) {
     console.error('Error toggling pin:', error);

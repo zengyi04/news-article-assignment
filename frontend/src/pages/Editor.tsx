@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { collection, doc, getDoc, addDoc, updateDoc } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { articlesApi } from '../lib/api';
 import { ArticleFormData, Article } from '../types';
 import { ArrowLeft, Loader2, Plus, Trash2, CheckCircle2 } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -86,10 +85,8 @@ export function Editor() {
       const fetchArticle = async () => {
         setFetching(true);
         try {
-          const docRef = doc(db, 'articles', id);
-          const docSnap = await getDoc(docRef);
-          if (docSnap.exists()) {
-            const data = docSnap.data() as Article;
+          const data = await articlesApi.getArticle(id);
+          if (data) {
             reset({
               title: data.title,
               summary: data.summary,
@@ -101,7 +98,7 @@ export function Editor() {
             });
           }
         } catch (error) {
-          handleFirestoreError(error, OperationType.GET, `articles/${id}`);
+          console.error('Error fetching article:', error);
         } finally {
           setFetching(false);
         }
@@ -115,7 +112,7 @@ export function Editor() {
     const toastId = toast.info(id ? 'Updating archive...' : 'Publishing insight...', { autoClose: false });
     
     try {
-      // Clean and validate data before sending to Firestore
+      // Clean and validate data before sending to the backend API
       const cleanedData = {
         ...data,
         // Validate and clean image URL
@@ -124,22 +121,12 @@ export function Editor() {
         sourceUrl: validateAndCleanUrl(data.sourceUrl)
       };
 
-      const articlePayload = {
-        ...cleanedData,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-
       if (id) {
-        const docRef = doc(db, 'articles', id);
-        await updateDoc(docRef, {
-          ...cleanedData,
-          updatedAt: new Date().toISOString(),
-        });
+        await articlesApi.updateArticle(id, cleanedData);
         toast.update(toastId, { render: 'Archive successfully updated', type: 'success', autoClose: 2000 });
       } else {
-        await addDoc(collection(db, 'articles'), {
-          ...articlePayload,
+        await articlesApi.createArticle({
+          ...cleanedData,
           isPinned: false,
         });
         toast.update(toastId, { render: 'New insight published successfully', type: 'success', autoClose: 2000 });
@@ -149,12 +136,7 @@ export function Editor() {
       navigate('/dashboard');
     } catch (error) {
       toast.dismiss(toastId);
-      if (error instanceof Error && error.message === 'Operation timed out') {
-        toast.error('Publishing timed out. Please check your connection and try again.');
-      } else {
-        const firestoreError = handleFirestoreError(error, OperationType.WRITE, id ? `articles/${id}` : 'articles');
-        toast.error(firestoreError.error);
-      }
+      toast.error(error instanceof Error ? error.message : 'Publishing failed. Please try again.');
       console.error('Publishing error:', error);
     } finally {
       setLoading(false);
