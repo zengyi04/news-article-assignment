@@ -1,0 +1,28 @@
+{
+  "entities": {
+    "Article": {
+      "title": "News Article",
+      "description": "A representation of a news article in the system.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "The title of the article" },
+        "summary": { "type": "string", "description": "HTML or text content of the article summary" },
+        "date": { "type": "string", "format": "date", "description": "The publication date" },
+        "publisher": { "type": "string", "description": "The publisher of the article" },
+        "type": { "type": "string", "enum": ["standard", "website", "pdf", "doc"], "description": "Category of the article content" },
+        "sourceUrl": { "type": "string", "description": "External URL for PDF, Doc, or Website" },
+        "imageUrl": { "type": "string", "description": "Background image URL for the article card" },
+        "isPinned": { "type": "boolean", "description": "Whether the article is pinned to the top" },
+        "createdAt": { "type": "number", "description": "Timestamp of creation" },
+        "updatedAt": { "type": "number", "description": "Timestamp of last update" }
+      },
+      "required": ["title", "summary", "date", "publisher"]
+    }
+  },
+  "firestore": {
+    "articles": {
+      "schema": "Article",
+      "description": "Collection of all news articles"
+    }
+  }
+}
