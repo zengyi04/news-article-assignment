@@ -1,22 +1,31 @@
-import { initializeApp } from 'firebase/app';
+import { getApp, getApps, initializeApp, type FirebaseApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
-// Initialize Firebase app
-const app = initializeApp(firebaseConfig);
+declare global {
+  interface Window {
+    __newsArticleFirebaseApp?: FirebaseApp;
+  }
+}
+
+const globalWindow = window as Window & typeof globalThis;
+
+// Initialize Firebase app once and reuse it across Vite hot reloads
+const app = globalWindow.__newsArticleFirebaseApp ?? (getApps().length ? getApp() : initializeApp(firebaseConfig));
+globalWindow.__newsArticleFirebaseApp = app;
+
+export const auth = getAuth();
 
 // Get Firestore instance with optimized settings
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export const db = getFirestore(app);
 
 // Check if we're in development and connect to emulator if needed
-if (window.location.hostname === 'localhost' && process.env.NODE_ENV === 'development') {
+if (window.location.hostname === 'localhost' && import.meta.env.DEV) {
   // Uncomment to use Firestore emulator for faster development
   // connectFirestoreEmulator(db, 'localhost', 8080);
   console.log('Firestore initialized for development');
 }
-
-export const auth = getAuth();
 
 // Configure auth settings for development
 if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
@@ -49,9 +58,14 @@ export interface FirestoreErrorInfo {
   }
 }
 
-export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): FirestoreErrorInfo {
+  const message = error instanceof Error ? error.message : String(error);
+  const friendlyMessage = message.includes('Missing or insufficient permissions')
+    ? 'Firestore permissions are blocking writes. Deploy frontend/firestore.rules to the Firebase project, then reload the app.'
+    : message;
+
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: friendlyMessage,
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,
@@ -64,8 +78,8 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
       })) || []
     },
     operationType,
-    path
-  }
+    path,
+  };
   console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+  return errInfo;
 }

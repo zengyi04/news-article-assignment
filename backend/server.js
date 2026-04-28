@@ -11,7 +11,15 @@ const articleRoutes = require('./routes/articles');
 const authRoutes = require('./routes/auth');
 
 const app = express();
-const PORT = process.env.PORT || 5001;
+const PORT = Number(process.env.PORT) || 5001;
+const NODE_ENV = process.env.NODE_ENV || 'development';
+const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID || 'news-fa2f1';
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+const RATE_LIMIT_WINDOW_MS = Number(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000;
+const RATE_LIMIT_MAX_REQUESTS = Number(process.env.RATE_LIMIT_MAX_REQUESTS) || 100;
+const TRUST_PROXY = process.env.TRUST_PROXY === 'false' ? false : 1;
+
+app.set('trust proxy', TRUST_PROXY);
 
 // Security middleware
 app.use(helmet({
@@ -27,8 +35,11 @@ app.use(helmet({
 
 // Rate limiting
 const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100, // limit each IP to 100 requests per windowMs
+  windowMs: RATE_LIMIT_WINDOW_MS, // 15 minutes
+  max: RATE_LIMIT_MAX_REQUESTS, // limit each IP to 100 requests per windowMs
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => req.method === 'OPTIONS',
   message: {
     error: 'Too many requests from this IP, please try again later.',
   },
@@ -37,7 +48,7 @@ app.use(limiter);
 
 // CORS configuration
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: FRONTEND_URL,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -55,9 +66,26 @@ app.get('/health', (req, res) => {
     status: 'OK',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    environment: process.env.NODE_ENV,
-    projectId: process.env.FIREBASE_PROJECT_ID,
+    environment: NODE_ENV,
+    projectId: FIREBASE_PROJECT_ID,
   });
+});
+
+// Root endpoint
+app.get('/', (req, res) => {
+  res.status(200).json({
+    status: 'OK',
+    message: 'News Article API is running',
+    endpoints: {
+      health: '/health',
+      auth: '/api/auth',
+      articles: '/api/articles',
+    },
+  });
+});
+
+app.get('/favicon.ico', (req, res) => {
+  res.status(204).end();
 });
 
 // API routes
@@ -150,9 +178,9 @@ process.on('SIGINT', () => {
 // Start server
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📊 Environment: ${process.env.NODE_ENV}`);
-  console.log(`🔥 Firebase Project: ${process.env.FIREBASE_PROJECT_ID}`);
-  console.log(`🌐 CORS enabled for: ${process.env.FRONTEND_URL}`);
+  console.log(`📊 Environment: ${NODE_ENV}`);
+  console.log(`🔥 Firebase Project: ${FIREBASE_PROJECT_ID}`);
+  console.log(`🌐 CORS enabled for: ${FRONTEND_URL}`);
   console.log(`📖 Health check: http://localhost:${PORT}/health`);
 });
 

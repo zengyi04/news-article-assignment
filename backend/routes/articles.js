@@ -4,6 +4,11 @@ const Joi = require('joi');
 
 const router = express.Router();
 
+const assetUrlSchema = Joi.alternatives().try(
+  Joi.string().uri({ scheme: ['http', 'https'] }),
+  Joi.string().pattern(/^data:(image\/[a-zA-Z]+|application\/pdf);base64,([A-Za-z0-9+/]+={0,2})$/)
+).empty('').optional();
+
 // Validation schemas
 const articleSchema = Joi.object({
   title: Joi.string().required().min(1).max(200),
@@ -11,8 +16,8 @@ const articleSchema = Joi.object({
   date: Joi.string().required(),
   publisher: Joi.string().required().min(1).max(100),
   type: Joi.string().valid('standard', 'website', 'pdf', 'doc').required(),
-  sourceUrl: Joi.string().uri().optional(),
-  imageUrl: Joi.string().uri().optional(),
+  sourceUrl: assetUrlSchema,
+  imageUrl: assetUrlSchema,
   isPinned: Joi.boolean().default(false),
 });
 
@@ -22,8 +27,8 @@ const updateArticleSchema = Joi.object({
   date: Joi.string(),
   publisher: Joi.string().min(1).max(100),
   type: Joi.string().valid('standard', 'website', 'pdf', 'doc'),
-  sourceUrl: Joi.string().uri().optional(),
-  imageUrl: Joi.string().uri().optional(),
+  sourceUrl: assetUrlSchema,
+  imageUrl: assetUrlSchema,
   isPinned: Joi.boolean(),
 });
 
@@ -145,6 +150,43 @@ router.get('/:id', verifyToken, async (req, res) => {
   }
 });
 
+// GET /api/articles/stats - Get articles statistics
+router.get('/stats', verifyToken, async (req, res) => {
+  try {
+    const snapshot = await db.collection('articles').get();
+    const articles = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+    const stats = {
+      total: articles.length,
+      pinned: articles.filter(a => a.isPinned).length,
+      byType: {
+        standard: articles.filter(a => a.type === 'standard').length,
+        website: articles.filter(a => a.type === 'website').length,
+        pdf: articles.filter(a => a.type === 'pdf').length,
+        doc: articles.filter(a => a.type === 'doc').length
+      },
+      byPublisher: articles.reduce((acc, article) => {
+        acc[article.publisher] = (acc[article.publisher] || 0) + 1;
+        return acc;
+      }, {}),
+      recentActivity: articles
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+        .slice(0, 5)
+        .map(article => ({
+          id: article.id,
+          title: article.title,
+          publisher: article.publisher,
+          createdAt: article.createdAt
+        }))
+    };
+
+    res.json(stats);
+  } catch (error) {
+    console.error('Error fetching stats:', error);
+    res.status(500).json({ error: 'Failed to fetch statistics' });
+  }
+});
+
 // POST /api/articles - Create new article
 router.post('/', verifyToken, async (req, res) => {
   try {
@@ -262,43 +304,6 @@ router.post('/:id/pin', verifyToken, async (req, res) => {
   } catch (error) {
     console.error('Error toggling pin:', error);
     res.status(500).json({ error: 'Failed to toggle pin status' });
-  }
-});
-
-// GET /api/articles/stats - Get articles statistics
-router.get('/stats', verifyToken, async (req, res) => {
-  try {
-    const snapshot = await db.collection('articles').get();
-    const articles = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-    const stats = {
-      total: articles.length,
-      pinned: articles.filter(a => a.isPinned).length,
-      byType: {
-        standard: articles.filter(a => a.type === 'standard').length,
-        website: articles.filter(a => a.type === 'website').length,
-        pdf: articles.filter(a => a.type === 'pdf').length,
-        doc: articles.filter(a => a.type === 'doc').length
-      },
-      byPublisher: articles.reduce((acc, article) => {
-        acc[article.publisher] = (acc[article.publisher] || 0) + 1;
-        return acc;
-      }, {}),
-      recentActivity: articles
-        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-        .slice(0, 5)
-        .map(article => ({
-          id: article.id,
-          title: article.title,
-          publisher: article.publisher,
-          createdAt: article.createdAt
-        }))
-    };
-
-    res.json(stats);
-  } catch (error) {
-    console.error('Error fetching stats:', error);
-    res.status(500).json({ error: 'Failed to fetch statistics' });
   }
 });
 

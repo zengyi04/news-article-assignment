@@ -124,57 +124,37 @@ export function Editor() {
         sourceUrl: validateAndCleanUrl(data.sourceUrl)
       };
 
-      // Add timeout to prevent infinite loading
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Operation timed out')), 60000); // 60 second timeout
-      });
+      const articlePayload = {
+        ...cleanedData,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
 
-      console.log('Starting Firebase operation...', { id: !!id, hasData: !!data });
-
-      let operation;
       if (id) {
         const docRef = doc(db, 'articles', id);
-        operation = updateDoc(docRef, {
+        await updateDoc(docRef, {
           ...cleanedData,
-          updatedAt: Date.now()
+          updatedAt: new Date().toISOString(),
         });
+        toast.update(toastId, { render: 'Archive successfully updated', type: 'success', autoClose: 2000 });
       } else {
-        operation = addDoc(collection(db, 'articles'), {
-          ...cleanedData,
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-          isPinned: false
+        await addDoc(collection(db, 'articles'), {
+          ...articlePayload,
+          isPinned: false,
         });
+        toast.update(toastId, { render: 'New insight published successfully', type: 'success', autoClose: 2000 });
+        reset();
       }
 
-      // Race between operation and timeout
-      try {
-        const result = await Promise.race([operation, timeoutPromise]);
-        console.log('Firebase operation completed successfully:', result);
-        
-        if (id) {
-          toast.update(toastId, { render: 'Archive successfully updated', type: 'success', autoClose: 2000 });
-        } else {
-          toast.update(toastId, { render: 'New insight published successfully', type: 'success', autoClose: 2000 });
-          reset();
-        }
-        
-        // Navigate immediately after successful operation
-        navigate('/dashboard');
-      } catch (raceError) {
-        // Re-throw the error to be handled by the outer catch block
-        throw raceError;
-      }
+      navigate('/dashboard');
     } catch (error) {
       toast.dismiss(toastId);
-      
-      // Handle specific errors
-      if (error.message === 'Operation timed out') {
+      if (error instanceof Error && error.message === 'Operation timed out') {
         toast.error('Publishing timed out. Please check your connection and try again.');
       } else {
-        handleFirestoreError(error, OperationType.WRITE, id ? `articles/${id}` : 'articles');
+        const firestoreError = handleFirestoreError(error, OperationType.WRITE, id ? `articles/${id}` : 'articles');
+        toast.error(firestoreError.error);
       }
-      
       console.error('Publishing error:', error);
     } finally {
       setLoading(false);

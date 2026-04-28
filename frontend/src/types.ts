@@ -10,8 +10,8 @@ export interface Article {
   sourceUrl?: string;
   imageUrl?: string;
   isPinned?: boolean;
-  createdAt: number;
-  updatedAt: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type ArticleFormData = Omit<Article, 'id' | 'createdAt' | 'updatedAt'>;

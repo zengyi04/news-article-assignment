@@ -1,9 +1,10 @@
 // API client for backend integration
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
+import { auth } from './firebase';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 // Get current Firebase ID token
 const getAuthToken = async () => {
-  const { auth } = await import('./firebase');
   const user = auth.currentUser;
   if (!user) throw new Error('User not authenticated');
   return user.getIdToken();

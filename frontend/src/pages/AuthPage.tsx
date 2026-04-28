@@ -1,16 +1,16 @@
 import React, { useState } from 'react';
-import { auth, handleFirestoreError, OperationType } from '../lib/firebase';
+import { auth } from '../lib/firebase';
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
   signInWithPopup, 
   GoogleAuthProvider,
-  updateProfile
+  updateProfile,
+  signOut
 } from 'firebase/auth';
 import { useNavigate } from 'react-router-dom';
 import { Newspaper, Loader2, Mail, Lock, User, ArrowRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { cn } from '../lib/utils';
 
 export function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
@@ -29,11 +29,16 @@ export function AuthPage() {
     try {
       if (isLogin) {
         await signInWithEmailAndPassword(auth, email, password);
+        navigate('/dashboard');
       } else {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         await updateProfile(userCredential.user, { displayName: name });
+        await signOut(auth);
+        setIsLogin(true);
+        setName('');
+        setPassword('');
+        setError('Account created. Please sign in to continue.');
       }
-      navigate('/dashboard');
     } catch (err: any) {
       setError(err.message || 'Authentication failed');
       console.error(err);
